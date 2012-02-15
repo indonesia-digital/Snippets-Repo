@@ -1,0 +1,60 @@
+function tw_request(method, api_request){
+  // general purpose function to interact with twitter API
+  // for method and api_request doc see http://dev.twitter.com/doc/
+  // retuns object
+  var oauthConfig = UrlFetchApp.addOAuthService("twitter");
+  oauthConfig.setAccessTokenUrl(
+      "https://api.twitter.com/oauth/access_token");
+  oauthConfig.setRequestTokenUrl(
+      "https://api.twitter.com/oauth/request_token");
+  oauthConfig.setAuthorizationUrl(
+      "https://api.twitter.com/oauth/authorize");
+  oauthConfig.setConsumerKey(getConsumerKey());
+  oauthConfig.setConsumerSecret(getConsumerSecret());
+  var requestData = {
+        "method": method,
+        "oAuthServiceName": "twitter",
+        "oAuthUseToken": "always"
+      };
+   try {
+      var result = UrlFetchApp.fetch(
+          "https://api.twitter.com/1/"+api_request,
+          requestData);
+      var o  = Utilities.jsonParse(result.getContentText());
+    } catch (e) {
+      Logger.log(e);
+    }
+   return o;
+}
+function getFriendAndFo(sheetName){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  sheet.getRange(2, 1, sheet.getLastRow(), sheet.getMaxColumns()).clear({contentsOnly:true}); //clear sheet
+  var cursor = "-1";
+  while(cursor != "none"){ // while twitter returns data loop
+    try {
+      var o = tw_request("GET", "statuses/"+sheetName+".json?cursor="+cursor); // note using sheetname to build api request
+      var data = o.users;
+      for (i in data){ // extracting some subobjects to top level (makes it easier to setRowsData)
+        if (data[i].status){
+          for (j in data[i].status){
+            data[i]["status_"+j] = data[i].status[j];
+          }
+        }
+        if (data[i].screen_name){ // also build url to jump to profile page
+          data[i]["profile_link"] = "http://twitter.com/"+data[i].screen_name;
+        }
+      }
+      var headRange = sheet.getRange(1, 1, 1, sheet.getMaxColumns());
+      var rowIndex = sheet.getLastRow()+1;
+      setRowsData(sheet, data, headRange, rowIndex); // dump data for this loop to sheet
+      if (o.next_cursor!="0"){
+        cursor = o.next_cursor; // get next cursor
+      } else {
+        cursor = "none"; // break
+      }
+    }  catch (e) {
+      Logger.log(e);
+    }
+  }
+}
